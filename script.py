@@ -94,8 +94,10 @@ O relatório deve conter:
 4. <h2>Plano de Ação Recomendado</h2>: Três ações práticas e objetivas para o analista evoluir.
 """
 
-# Modelos em ordem de prioridade para contornar indisponibilidades temporárias (503)
-modelos = ["gemini-2.5-flash", "gemini-2.5-flash-lite"]
+# Modelos em ordem de prioridade para contornar indisponibilidades temporárias.
+# OBS: os modelos gemini-2.5-* estão restritos pela Google a chaves/projetos que já os
+# usaram anteriormente. Para chaves novas, usar as gerações atuais (3.x).
+modelos = ["gemini-3.5-flash", "gemini-3.1-flash-lite"]
 gemini_response = None
 
 print("Gerando análise com o Gemini...")
@@ -110,8 +112,24 @@ for model_name in modelos:
                 contents=prompt
             )
             break
-        except (ServerError, APIError) as e:
-            print(f"Aviso: Erro de API ({e.code}). Aguardando para tentar novamente...")
+        except APIError as e:
+            codigo = getattr(e, "code", None)
+            mensagem = getattr(e, "message", str(e))
+            if codigo == 404:
+                # 404 = modelo indisponível/sem acesso para esta chave -> erro permanente,
+                # não adianta insistir com retry/backoff. Pula direto para o próximo modelo.
+                print(f"Erro 404 para o modelo {model_name}: {mensagem}")
+                print("Modelo indisponível para esta chave/projeto. Pulando para o próximo fallback...")
+                break
+            print(f"Aviso: Erro de API ({codigo}): {mensagem}. Aguardando para tentar novamente...")
+            if tentativa < tentativas:
+                time.sleep(tentativa * 5)
+            else:
+                print(f"Modelo {model_name} indisponível após {tentativas} tentativas. Testando fallback...")
+        except ServerError as e:
+            codigo = getattr(e, "code", None)
+            mensagem = getattr(e, "message", str(e))
+            print(f"Aviso: Erro de servidor ({codigo}): {mensagem}. Aguardando para tentar novamente...")
             if tentativa < tentativas:
                 time.sleep(tentativa * 5)
             else:
